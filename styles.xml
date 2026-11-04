@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="CalcBtn">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_margin">4dp</item>
+        <item name="android:textSize">26sp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:background">#37474F</item>
+        <item name="android:onClick">onButton</item>
+    </style>
+    <style name="CalcOp" parent="CalcBtn">
+        <item name="android:background">#FF9800</item>
+    </style>
+    <style name="CalcFn" parent="CalcBtn">
+        <item name="android:background">#607D8B</item>
+    </style>
+</resources>
