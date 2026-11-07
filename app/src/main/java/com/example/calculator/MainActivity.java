@@ -1,7 +1,9 @@
 package com.example.calculator;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
@@ -29,6 +31,7 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -59,8 +62,8 @@ public class MainActivity extends Activity {
 
     private final Engine.Calc calc = new Engine.Calc();
     private final List<Button> keyButtons = new ArrayList<>();
-    private final Button[] tabButtons = new Button[3];
-    private final View[] panels = new View[3];
+    private final Button[] tabButtons = new Button[4];
+    private final View[] panels = new View[4];
     private LinearLayout root;
     private float density;
 
@@ -72,6 +75,10 @@ public class MainActivity extends Activity {
     private EditText etConv;
     private TextView tvConvOut, tvConvAll;
     private boolean suppress = false;
+
+    // history
+    private History history = new History();
+    private LinearLayout historyList;
 
     // polar / rectangular
     private Button btnAngle;
@@ -111,6 +118,7 @@ public class MainActivity extends Activity {
             calc.mem = 0;
             calc.memSet = false;
         }
+        history = History.parse(sp.getString("history", ""));
     }
 
     private void saveState() {
@@ -118,6 +126,7 @@ public class MainActivity extends Activity {
                 .putInt("mode", calc.mode)
                 .putBoolean("memSet", calc.memSet)
                 .putString("mem", Double.toString(calc.mem))
+                .putString("history", history.serialize())
                 .apply();
     }
 
@@ -241,10 +250,11 @@ public class MainActivity extends Activity {
 
         LinearLayout tabRow = new LinearLayout(this);
         tabRow.setOrientation(LinearLayout.HORIZONTAL);
-        String[] names = {"Calculator", "Converter", "Polar / Rect"};
-        for (int i = 0; i < 3; i++) {
+        String[] names = {"Calc", "Convert", "Polar", "History"};
+        for (int i = 0; i < names.length; i++) {
             final int idx = i;
             Button b = smallButton(names[i], C_TAB_OFF);
+            b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
             b.setOnClickListener(new View.OnClickListener() {
                 @Override public void onClick(View v) { showTab(idx); }
             });
@@ -257,6 +267,7 @@ public class MainActivity extends Activity {
         panels[0] = buildCalcPanel();
         panels[1] = buildConverterPanel();
         panels[2] = buildPolarPanel();
+        panels[3] = buildHistoryPanel();
         for (View p : panels) {
             frame.addView(p, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         }
@@ -265,12 +276,13 @@ public class MainActivity extends Activity {
     }
 
     private void showTab(int idx) {
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < panels.length; i++) {
             panels[i].setVisibility(i == idx ? View.VISIBLE : View.GONE);
             tabButtons[i].setBackground(keyBg(i == idx ? C_ACTIVE : C_TAB_OFF));
         }
         if (idx == 2) updatePolarAll();
-        if (idx == 0) {
+        if (idx == 3) rebuildHistory();
+        if (idx == 0 || idx == 3) {
             InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
             if (imm != null && root != null) imm.hideSoftInputFromWindow(root.getWindowToken(), 0);
         }
@@ -366,7 +378,11 @@ public class MainActivity extends Activity {
             key = d.invKey;
             calc.inv = false;
         }
+        boolean wasResult = calc.isResult();
+        double ansBefore = calc.ans;
+        double memBefore = calc.memSet ? calc.mem : 0;
         calc.press(key);
+        if (!wasResult && calc.isResult()) recordHistory(ansBefore, memBefore);
         saveState();
         refresh();
         if (panels[2].getVisibility() == View.VISIBLE) updatePolarAll();
@@ -406,6 +422,136 @@ public class MainActivity extends Activity {
         int n = big.length();
         int sp = calc.hasError() ? (n <= 22 ? 22 : 16) : (n <= 10 ? 44 : n <= 16 ? 32 : n <= 26 ? 24 : 18);
         tvBig.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+    }
+
+    // =====================================================================
+    //  History panel
+    // =====================================================================
+    private View buildHistoryPanel() {
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setPadding(dp(10), dp(4), dp(10), dp(4));
+
+        LinearLayout top = new LinearLayout(this);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        top.addView(heading("History (newest first)"), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        Button clear = smallButton("Clear all", C_CLEAR);
+        clear.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) { confirmClear(); }
+        });
+        top.addView(clear, lp(dp(100), dp(40), 0));
+        col.addView(top, lp(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0));
+
+        ScrollView sv = new ScrollView(this);
+        historyList = new LinearLayout(this);
+        historyList.setOrientation(LinearLayout.VERTICAL);
+        sv.addView(historyList, new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        col.addView(sv, lp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        return col;
+    }
+
+    private void rebuildHistory() {
+        historyList.removeAllViews();
+        if (history.size() == 0) {
+            TextView t = valueText(15);
+            t.setTextColor(0xFF9AA5B1);
+            t.setText("No calculations yet.\nPress = on the Calc tab and they will appear here.");
+            t.setPadding(0, dp(16), 0, 0);
+            historyList.addView(t);
+            return;
+        }
+        for (final History.Entry e : history.items()) {
+            LinearLayout card = new LinearLayout(this);
+            card.setOrientation(LinearLayout.VERTICAL);
+            card.setBackground(shape(C_DIGIT));
+            card.setPadding(dp(12), dp(8), dp(12), dp(8));
+
+            TextView tvE = new TextView(this);
+            tvE.setText(e.expr + "   [" + Engine.MODE_NAMES[e.mode] + "]");
+            tvE.setTextColor(0xFF9AA5B1);
+            tvE.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+            card.addView(tvE);
+
+            TextView tvR = new TextView(this);
+            tvR.setText("= " + e.result);
+            tvR.setTextColor(Color.WHITE);
+            tvR.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+            tvR.setTypeface(Typeface.DEFAULT_BOLD);
+            card.addView(tvR);
+
+            LinearLayout btns = new LinearLayout(this);
+            btns.setOrientation(LinearLayout.HORIZONTAL);
+            Button b1 = smallButton("Use expression", C_FUNC);
+            b1.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { recallExpression(e); }
+            });
+            Button b2 = smallButton("Use result", C_OP);
+            b2.setOnClickListener(new View.OnClickListener() {
+                @Override public void onClick(View v) { recallNumber(e); }
+            });
+            btns.addView(b1, lpm(0, dp(42), 1, 2));
+            btns.addView(b2, lpm(0, dp(42), 1, 2));
+            card.addView(btns);
+
+            historyList.addView(card, lpm(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, 0, 4));
+        }
+    }
+
+    private void recordHistory(double ansBefore, double memBefore) {
+        history.add(new History.Entry(calc.mode, calc.ans, calc.expr, calc.result,
+                History.recallText(calc.expr, ansBefore, memBefore)));
+    }
+
+    private void confirmClear() {
+        if (history.size() == 0) return;
+        new AlertDialog.Builder(this)
+                .setTitle("Clear history?")
+                .setMessage("All " + history.size() + " saved calculations will be deleted.")
+                .setPositiveButton("Clear", new DialogInterface.OnClickListener() {
+                    @Override public void onClick(DialogInterface dialog, int which) {
+                        history.clear();
+                        saveState();
+                        rebuildHistory();
+                    }
+                })
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void toast(String msg) {
+        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
+    }
+
+    /** Puts text into the calculator as the current expression (edit mode, nothing evaluated). */
+    private void loadIntoCalc(String text) {
+        calc.inv = false;
+        calc.expr = text + "0";   // sentinel digit ...
+        calc.press("DEL");        // ... removed again by DEL, which also switches the calculator to edit mode
+    }
+
+    private void recallExpression(History.Entry e) {
+        if (e.recall.length() >= Engine.Calc.MAX_LEN) {
+            toast("Expression is too long to reuse");
+            return;
+        }
+        if (calc.mode != e.mode) {
+            calc.mode = e.mode;   // sin, cos, tan depend on the angle unit used for this answer
+            toast("Angle unit set to " + Engine.MODE_NAMES[e.mode] + " (as used in this calculation)");
+        }
+        loadIntoCalc(e.recall);
+        finishRecall();
+    }
+
+    private void recallNumber(History.Entry e) {
+        loadIntoCalc(History.recallNumberText(e.value));
+        finishRecall();
+    }
+
+    private void finishRecall() {
+        saveState();
+        refresh();
+        showTab(0);
     }
 
     // =====================================================================
