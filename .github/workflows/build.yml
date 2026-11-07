@@ -20,7 +20,22 @@ jobs:
           gradle-version: 8.7
 
       - name: Build debug APK
-        run: gradle assembleDebug
+        run: |
+          set +e
+          gradle assembleDebug --console=plain > build.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            grep -B1 -A4 -E "error:|What went wrong" build.log | head -80 > errors.txt
+            [ -s errors.txt ] || tail -n 40 build.log > errors.txt
+            errs=$(sed 's/%/%25/g' errors.txt | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Build failed::$errs"
+            echo '## Build errors' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat errors.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          tail -n 60 build.log
+          exit $code
 
       - uses: actions/upload-artifact@v4
         with:
