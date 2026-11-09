@@ -65,6 +65,7 @@ public class MainActivity extends Activity implements AngleHost {
     private int themeIdx = 0;           // 0 dark, 1 light
     private boolean vibrate = true;
     private boolean largeKeys = false;
+    private boolean clearAll = false;   // false: C removes the last entry, true: C clears everything
 
     // calculator screen
     private LinearLayout calcBox, displayBox, padBox;
@@ -130,6 +131,7 @@ public class MainActivity extends Activity implements AngleHost {
         themeIdx = sp.getInt("theme", 0) == 1 ? 1 : 0;
         vibrate = sp.getBoolean("vibrate", true);
         largeKeys = sp.getBoolean("largeKeys", false);
+        clearAll = sp.getBoolean("clearAll", false);
     }
 
     private void saveState() {
@@ -141,6 +143,7 @@ public class MainActivity extends Activity implements AngleHost {
                 .putInt("theme", themeIdx)
                 .putBoolean("vibrate", vibrate)
                 .putBoolean("largeKeys", largeKeys)
+                .putBoolean("clearAll", clearAll)
                 .apply();
     }
 
@@ -335,12 +338,30 @@ public class MainActivity extends Activity implements AngleHost {
         b.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onKey((KeyDef) v.getTag(), v); }
         });
+        if (d.key.equals("C")) {
+            b.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override public boolean onLongClick(View v) {
+                    calc.press("C");          // hold C: clear everything
+                    saveState();
+                    refresh();
+                    toast("All cleared");
+                    return true;
+                }
+            });
+        }
         keyButtons.add(b);
         return b;
     }
 
     private void onKey(KeyDef d, View v) {
         if (vibrate) v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+        if (d.key.equals("C")) {
+            EditOps.clearKey(calc, clearAll);
+            saveState();
+            refresh();
+            if (curTab == TAB_POLAR) polarPanel.refresh();
+            return;
+        }
         String key = d.key;
         if (calc.inv && d.invKey != null) {
             key = d.invKey;
@@ -505,6 +526,11 @@ public class MainActivity extends Activity implements AngleHost {
     }
 
     private void recordHistory(double ansBefore, double memBefore) {
+        if (history.size() > 0) {
+            History.Entry top = history.items().get(0);
+            // pressing C then = again would repeat the same line: skip it
+            if (top.expr.equals(calc.expr) && top.result.equals(calc.result) && top.mode == calc.mode) return;
+        }
         history.add(new History.Entry(calc.mode, calc.ans, calc.expr, calc.result,
                 History.recallText(calc.expr, ansBefore, memBefore)));
     }
@@ -528,8 +554,7 @@ public class MainActivity extends Activity implements AngleHost {
     /** Puts text into the calculator as the current expression (edit mode, nothing evaluated). */
     private void loadIntoCalc(String text) {
         calc.inv = false;
-        calc.expr = text + "0";   // sentinel digit ...
-        calc.press("DEL");        // ... removed again by DEL, which also switches the calculator to edit mode
+        EditOps.setExpression(calc, text);
     }
 
     private void recallExpression(History.Entry e) {
@@ -559,6 +584,10 @@ public class MainActivity extends Activity implements AngleHost {
     // =====================================================================
     //  Settings screen
     // =====================================================================
+    private String clearKeyLabel() {
+        return "C key clears: " + (clearAll ? "Everything" : "Last entry") + "   (tap to switch)";
+    }
+
     private View buildSettingsPanel() {
         LinearLayout col = ui.column();
 
@@ -590,6 +619,19 @@ public class MainActivity extends Activity implements AngleHost {
         lp2.topMargin = ui.dp(8);
         col.addView(bLarge, lp2);
 
+        col.addView(ui.heading("Calculator keys"));
+        final Button bClear = ui.smallButton("", ui.pal.func);
+        bClear.setText(clearKeyLabel());
+        bClear.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View v) {
+                clearAll = !clearAll;
+                saveState();
+                bClear.setText(clearKeyLabel());
+            }
+        });
+        col.addView(bClear, ui.lpm(UiKit.MATCH, ui.dp(46), 0, 0));
+        col.addView(ui.note("Hold the C key at any time to clear everything."));
+
         col.addView(ui.heading("Feedback"));
         final Button bVib = ui.smallButton("", ui.pal.func);
         bVib.setText("Key vibration: " + (vibrate ? "On" : "Off") + "   (tap to switch)");
@@ -604,7 +646,8 @@ public class MainActivity extends Activity implements AngleHost {
         col.addView(ui.note("Key vibration also needs \"Touch feedback\" turned on in your phone's system sound / vibration settings."));
 
         col.addView(ui.heading("Tips"));
-        col.addView(ui.note("• Long-press the big number on the Calc tab to copy it.\n"
+        col.addView(ui.note("• C clears the last entry; press it again to step back further. Hold C to clear everything.\n"
+                + "• Long-press the big number on the Calc tab to copy it.\n"
                 + "• While you type, the small line shows what = would give.\n"
                 + "• INV turns sin, cos, tan, ln, log (and sinh, cosh, tanh) into their inverses.\n"
                 + "• Check DEG / RAD / GRAD before using sin, cos or tan.\n"
