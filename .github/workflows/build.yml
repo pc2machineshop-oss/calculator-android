@@ -15,6 +15,80 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Check source files are complete
+        run: |
+          python3 - <<'PY'
+          import glob, os, sys
+          base = "app/src/main/java/com/example/calculator"
+          required = ["Engine", "History", "Tools", "UiKit", "ConvertPolarPanels", "ShopMathPanels", "MainActivity", "EditOps"]
+          bad = False
+          for n in required:
+              p = base + "/" + n + ".java"
+              if not os.path.exists(p):
+                  print("::error::Missing file " + p)
+                  bad = True
+          for p in sorted(glob.glob(base + "/*.java")):
+              s = open(p, encoding="utf-8").read()
+              out = []
+              i = 0
+              n = len(s)
+              while i < n:
+                  c = s[i]
+                  if s.startswith("//", i):
+                      j = s.find("\n", i)
+                      i = n if j < 0 else j
+                  elif s.startswith("/*", i):
+                      j = s.find("*/", i + 2)
+                      i = n if j < 0 else j + 2
+                  elif c == '"':
+                      i += 1
+                      while i < n and s[i] != '"':
+                          i += 2 if s[i] == "\\" else 1
+                      i += 1
+                  elif c == "'":
+                      i += 1
+                      while i < n and s[i] != "'":
+                          i += 2 if s[i] == "\\" else 1
+                      i += 1
+                  else:
+                      out.append(c)
+                      i += 1
+              code = "".join(out)
+              problems = []
+              for a, b, name in (("{", "}", "curly brackets"), ("(", ")", "round brackets"), ("[", "]", "square brackets")):
+                  if code.count(a) != code.count(b):
+                      problems.append(name + " do not match (" + str(code.count(a)) + " opening, " + str(code.count(b)) + " closing)")
+              if not s.rstrip().endswith("}"):
+                  problems.append("the file does not end with }")
+              if not s.lstrip().startswith("package com.example.calculator;"):
+                  problems.append("the first line is not package com.example.calculator;")
+              if problems:
+                  bad = True
+                  print("::error file=" + p + "::" + os.path.basename(p) + " looks cut off or damaged: " + "; ".join(problems) + " (" + str(len(s.splitlines())) + " lines)")
+          if bad:
+              sys.exit(1)
+          print("All source files look complete.")
+          PY
+
+      - name: Run calculator self-checks
+        run: |
+          set +e
+          mkdir -p /tmp/chk
+          D=app/src/main/java/com/example/calculator
+          javac -encoding UTF-8 -d /tmp/chk $D/Engine.java $D/History.java $D/Tools.java $D/EditOps.java checks/SelfCheck.java > chk.log 2>&1 && java -cp /tmp/chk SelfCheck >> chk.log 2>&1
+          code=$?
+          if [ $code -ne 0 ]; then
+            head -n 60 chk.log > chk_errors.txt
+            errs=$(sed 's/%/%25/g' chk_errors.txt | sed ':a;N;$!ba;s/\n/%0A/g')
+            echo "::error title=Self-check failed::$errs"
+            echo '## Self-check failed' >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat chk_errors.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          cat chk.log
+          exit $code
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
