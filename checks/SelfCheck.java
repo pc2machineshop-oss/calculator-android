@@ -1,6 +1,7 @@
 import com.example.calculator.Engine;
 import com.example.calculator.EditOps;
 import com.example.calculator.History;
+import com.example.calculator.MachineTools;
 import com.example.calculator.Tools;
 
 /** Quick self-check run by GitHub on every upload. If a line fails, the build stops and shows which one. */
@@ -99,6 +100,21 @@ public class SelfCheck {
         check(String.join("|", Tools.quadratic(1, -3, 2)).equals("Discriminant = 1|Two real roots|x1 = 1|x2 = 2"), "quadratic", "");
         check(Tools.stats(Tools.parseList("0.1 0.2 0.3"))[2].equals("Mean = 0.2"), "statistics mean", "");
         check(String.join("|", Tools.bases("255", 10)).equals("255|FF|1111 1111|377"), "number bases", "");
+
+        // machine tools
+        double[] taper = MachineTools.taper(1.05, 1.0, 1.0);
+        check(Tools.fixed(taper[1], 4).equals("1.4321"), "taper half angle", Tools.fixed(taper[1], 4));
+        check(Tools.fixed(MachineTools.sineBarHeight(10, 15), 4).equals("2.5882"), "sine bar 10 in at 15 degrees", "");
+        check(Tools.fixed(MachineTools.sineBarAngle(5, 2.5), 4).equals("30.0000"), "sine bar angle", "");
+        double[] thread = MachineTools.thread(8, 1.25, 75, Double.NaN);
+        check(Tools.fixed(thread[0], 3).equals("7.188"), "M8x1.25 pitch diameter", Tools.fixed(thread[0], 3));
+        check(Tools.fixed(thread[4], 3).equals("6.782"), "M8x1.25 tap drill at 75 percent", Tools.fixed(thread[4], 3));
+        double[] inchThread = MachineTools.thread(0.25, 1.0 / 20, 75, Double.NaN);
+        check(Tools.fixed(inchThread[4], 4).equals("0.2013"), "1/4-20 tap drill at 75 percent", Tools.fixed(inchThread[4], 4));
+        double[] arc = MachineTools.arc(10, 0, 0, 10, 10, true);
+        check(Tools.fixed(arc[2], 4).equals("-10.0000") && Tools.fixed(arc[3], 4).equals("0.0000"), "G3 arc I and J", Tools.fixed(arc[2], 4) + "," + Tools.fixed(arc[3], 4));
+        double[] arcCw = MachineTools.arc(10, 0, 0, 10, 10, false);
+        check(Tools.fixed(arcCw[2], 4).equals("0.0000") && Tools.fixed(arcCw[3], 4).equals("10.0000"), "G2 arc I and J", Tools.fixed(arcCw[2], 4) + "," + Tools.fixed(arcCw[3], 4));
 
         System.out.println("Self-check: " + checks + " checks, " + failures + " failed.");
         if (failures > 0) System.exit(1);
