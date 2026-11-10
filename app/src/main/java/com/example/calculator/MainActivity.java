@@ -38,8 +38,8 @@ import java.util.List;
 public class MainActivity extends Activity implements AngleHost {
 
     private static final int T_DIGIT = 0, T_OP = 1, T_FUNC = 2, T_MEM = 3, T_CLEAR = 4, T_EQ = 5;
-    private static final String[] TAB_NAMES = {"Calc", "Convert", "Polar", "Shop", "Math", "History", "Settings"};
-    private static final int TAB_CALC = 0, TAB_POLAR = 2, TAB_HISTORY = 5, TAB_SETTINGS = 6;
+    private static final String[] TAB_NAMES = {"Calc", "Convert", "Polar", "Shop", "Machine", "Math", "History", "Settings"};
+    private static final int TAB_CALC = 0, TAB_POLAR = 2, TAB_HISTORY = 6, TAB_SETTINGS = 7;
 
     private static class KeyDef {
         final String label, key, invLabel, invKey;
@@ -202,9 +202,10 @@ public class MainActivity extends Activity implements AngleHost {
         panels[1] = new ConvertPanel(ui).build();
         panels[2] = polarPanel.build();
         panels[3] = new ShopPanel(ui).build();
-        panels[4] = new MathPanel(ui).build();
-        panels[5] = buildHistoryPanel();
-        panels[6] = buildSettingsPanel();
+        panels[4] = new MachinePanel(ui).build();
+        panels[5] = new MathPanel(ui).build();
+        panels[6] = buildHistoryPanel();
+        panels[7] = buildSettingsPanel();
 
         FrameLayout frame = new FrameLayout(this);
         for (View p : panels) {
