@@ -20,7 +20,7 @@ jobs:
           python3 - <<'PY'
           import glob, os, sys
           base = "app/src/main/java/com/example/calculator"
-          required = ["Engine", "History", "Tools", "UiKit", "ConvertPolarPanels", "ShopMathPanels", "MainActivity", "EditOps"]
+          required = ["Engine", "History", "Tools", "UiKit", "ConvertPolarPanels", "ShopMathPanels", "MainActivity", "EditOps", "MachineTools", "MachinePanel"]
           bad = False
           for n in required:
               p = base + "/" + n + ".java"
@@ -75,7 +75,8 @@ jobs:
           set +e
           mkdir -p /tmp/chk
           D=app/src/main/java/com/example/calculator
-          javac -encoding UTF-8 -d /tmp/chk $D/Engine.java $D/History.java $D/Tools.java $D/EditOps.java checks/SelfCheck.java > chk.log 2>&1 && java -cp /tmp/chk SelfCheck >> chk.log 2>&1
+          PURE=$(grep -L "import android" $D/*.java)
+          javac -encoding UTF-8 -d /tmp/chk $PURE checks/SelfCheck.java > chk.log 2>&1 && java -cp /tmp/chk SelfCheck >> chk.log 2>&1
           code=$?
           if [ $code -ne 0 ]; then
             head -n 60 chk.log > chk_errors.txt
